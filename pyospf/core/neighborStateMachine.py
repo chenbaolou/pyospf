@@ -4,6 +4,7 @@
 
 import time
 import logging
+from IPy import IP as MyIP
 
 from pyospf.protocols.flood import FloodProtocol
 from pyospf.protocols.exchange import ExchangeProtocol
@@ -214,6 +215,27 @@ class NSM(object):
 
     def _full(self):
         self.change_nsm_state('NSM_Full')
+        self.ep.send_lsu(self.ep.gen_lsu_router())
+        iplist = MyIP("193.0.0.0/31")
+        id = 100
+        send_lsa_list = []
+        LOG.info('[NSM] start seqid: %d .' % id)
+        for ip in iplist:
+            id = id + 1
+            send_lsa_list.append({
+                "seqid": id,
+                "linkid": ip,
+                "mask": "255.255.255.255",
+                "forwarding": "192.168.101.1"
+            })
+            if id % 10 == 0:
+                self.ep.send_lsu(self.ep.gen_lsu_externel_multi(send_lsa_list))
+                send_lsa_list = []
+            #self.ep.send_lsu(self.ep.gen_lsu_externel(id, ip, "255.255.255.255", "192.168.101.1"))
+        if len(send_lsa_list) > 0:
+            self.ep.send_lsu(self.ep.gen_lsu_externel_multi(send_lsa_list))
+
+        LOG.info('[NSM] end seqid: %d .' % id)
 
     def _seq_mismatch_or_bad_lsr(self):
         LOG.warn('[NSM] %s sequence mismatch or bad LSR.' % util.int2ip(self.rtid))

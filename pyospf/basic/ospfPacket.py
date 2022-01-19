@@ -53,7 +53,7 @@ class Hello(dpkt.Packet):
         ('mask', 'I', 0),
         ('hellointerval', 'H', 10),
         ('options', 'B', 0),
-        ('pri', 'B', 0),
+        ('pri', 'B', 1),
         ('deadinterval', 'I', 40),
         ('router', 'I', 0),
         ('backup', 'I', 0)
@@ -220,7 +220,7 @@ class RouterLSA(dpkt.Packet):
        |                              ...                              |
     """
     __hdr__ = (
-        ('veb', 'B', 0),
+        ('veb', 'H', 0),
         ('linknum', 'H', 0)
     )
 

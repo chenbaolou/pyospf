@@ -259,3 +259,55 @@ def hex2byte(hex_str):
         bytes.append(chr(int(hex_str[i:i+2], 16)))
 
     return ''.join(bytes)
+
+def orb(x):
+    """Return ord(x) when not already an int."""
+    if isinstance(x, int):
+        return x
+    return ord(x)
+
+def fletcher16(charbuf):
+    # This is based on the GPLed C implementation in Zebra <http://www.zebra.org/>  # noqa: E501
+    c0 = c1 = 0
+    for char in charbuf:
+        c0 += orb(char)
+        c1 += c0
+
+    c0 %= 255
+    c1 %= 255
+    return (c0, c1)
+
+def fletcher16_checkbytes(binbuf, offset):
+    """Calculates the Fletcher-16 checkbytes returned as 2 byte binary-string.
+
+       Including the bytes into the buffer (at the position marked by offset) the  # noqa: E501
+       global Fletcher-16 checksum of the buffer will be 0. Thus it is easy to verify  # noqa: E501
+       the integrity of the buffer on the receiver side.
+
+       For details on the algorithm, see RFC 2328 chapter 12.1.7 and RFC 905 Annex B.  # noqa: E501
+    """
+
+    # This is based on the GPLed C implementation in Zebra <http://www.zebra.org/>  # noqa: E501
+    if len(binbuf) < offset:
+        raise Exception("Packet too short for checkbytes %d" % len(binbuf))
+
+    binbuf = binbuf[:offset] + b"\x00\x00" + binbuf[offset + 2:]
+    (c0, c1) = fletcher16(binbuf)
+
+    x = ((len(binbuf) - offset - 1) * c0 - c1) % 255
+
+    if (x <= 0):
+        x += 255
+
+    y = 510 - c0 - x
+
+    if (y > 255):
+        y -= 255
+
+    chksum = (x << 8) | (y & 0xFF)
+    
+    return (binbuf[:offset] + struct.pack("B", x) + struct.pack("B", (y & 0xFF)) + binbuf[offset+2:], chksum)
+
+def lsa_checksum(binbuf):
+    (buf, chksum) = fletcher16_checkbytes(binbuf[2:], 14)
+    return (binbuf[:2] + buf, chksum)

@@ -1,6 +1,8 @@
 # !/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+import struct
+import socket
 import json
 import logging
 from functools import wraps
@@ -90,6 +92,21 @@ def stats():
     stat = ospf_instance.stat.get_stat_all()
     return json.dumps(stat)
 
+@app.route('/area')
+@requires_auth
+@return_json
+def areas():
+    arealist = {}
+    for key in ospf_instance.area_list:
+        arealist[key] = {}
+        arealist[key]['neighbor'] = list()
+        _area = ospf_instance.area_list[key]
+        _interface = _area.interface
+        _neighbor = _interface.neighbor
+        for item in _neighbor:
+            arealist[key]['neighbor'].append(socket.inet_ntoa(struct.pack('I',socket.htonl(item))) )
+
+    return json.dumps(arealist, default=lambda obj: obj.__dict__, sort_keys=True, indent=4)
 
 @app.route('/probe')
 @requires_auth
@@ -105,7 +122,6 @@ def probe():
         'running_time': str(running_time),
         }
     return json.dumps(probe)
-
 
 def init_api(config, oi):
     global ospf_instance

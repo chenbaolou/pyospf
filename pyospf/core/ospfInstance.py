@@ -10,6 +10,7 @@ from ospfArea import OspfArea
 from ospfReceiver import OspfReceiver
 from ospfLsdb import OspfLsdb
 from ospfStat import OspfStat
+from ospfTest import OspfTest
 from pyospf.basic.ospfSock import OspfSock
 from pyospf.basic.constant import ISM_STATE
 from pyospf.protocols.protocol import OspfProtocol

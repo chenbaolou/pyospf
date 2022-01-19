@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-
+import socket
 from dpkt.ospf import OSPF
+from scapy.utils import fletcher16_checkbytes
 
 from pyospf.basic.ospfPacket import *
 from pyospf.basic.ospfSock import OspfSock
 from pyospf.protocols.protocol import *
 from pyospf.utils.timer import Timer
 from pyospf.basic.constant import *
+from pyospf.utils import util
 
 
 class ExchangeProtocol(OspfProtocol):
@@ -348,3 +350,159 @@ class ExchangeProtocol(OspfProtocol):
         The probe doesn't need to receive LSR
         """
         pass
+
+    def gen_lsu_router(self):
+        lsudata = []
+        
+        lsaheader = LSAHeader(
+            age=1,
+            options=self.options,
+            type=1,
+            id=util.ip2int("192.168.101.1"),
+            adv=self.rid,
+            seq=11,
+            sum=0,
+            len=len(LSAHeader()) + len(RouterLSA()) + len(LinkLSA())
+        )
+
+        lsunum = LSU(
+            lsanum = 1
+        )
+        
+        routerLSA = RouterLSA(
+            veb=512,
+            linknum=1
+        )
+
+        linkLSA = LinkLSA(
+            linkid = util.ip2int("192.168.101.21"),
+            linkdata = util.ip2int("192.168.101.1"),
+            type = 2,
+            metric = 10000
+        )
+
+        lsa_str = str(lsaheader)+str(routerLSA)+str(linkLSA)
+
+        (lsa_str, checksum) = util.lsa_checksum(lsa_str)
+
+        lsudata.append(str(lsunum))
+        lsudata.append(lsa_str)
+
+        ospf_packet = OSPF(
+            v=self.version,
+            type=4,             # 4 for lsu
+            area=self.area,
+            len=len(OSPF()) + len(LSU()) + len(LSAHeader()) + len(RouterLSA()) + len(LinkLSA()),
+            router=self.rid,
+            data="".join(lsudata)
+        )
+
+        return str(ospf_packet)
+
+    def send_lsu(self, pkt):
+        if self.nsm.ism.link_type == 'Broadcast' and self.dst != self.nsm.ism.drip and self.dst != self.nsm.ism.bdrip:
+            if self.nsm.ism.drip == self.nsm.src:
+                self.dst = util.int2ip(self.nsm.ism.drip)
+            if self.nsm.ism.bdrip == self.nsm.src:
+                self.dst = util.int2ip(self.nsm.ism.bdrip)
+        self._sock.conn(self.dst)
+
+        #LOG.info('[Exchange] Send LSU to %s.' % self.dst)
+        self._sock.sendp(pkt)
+
+        self.nsm.ism.ai.oi.stat.send_lsu_count += 1
+        self.nsm.ism.ai.oi.stat.total_send_packet_count += 1
+
+    def gen_lsu_externel(self, seqid, linkid, mask, forwarding):
+        lsudata = []
+        
+        lsaheader = LSAHeader(
+            age=1,
+            options=self.options,
+            type=5,
+            id=util.ip2int(linkid),
+            adv=self.rid,
+            seq=seqid,
+            sum=0,
+            len=len(LSAHeader()) + len(ExternalLSA())
+        )
+
+        lsunum = LSU(
+            lsanum = 1
+        )
+        
+        externalLSA = ExternalLSA(
+            mask=util.ip2int(mask),
+            metric=20,
+            forwarding=util.ip2int(forwarding),
+            tag=0
+        )
+
+        lsa_str = str(lsaheader) + str(externalLSA)
+
+        (lsa_str, checksum) = util.lsa_checksum(lsa_str)
+        
+        lsudata.append(str(lsunum))
+        lsudata.append(lsa_str)
+
+        ospf_packet = OSPF(
+            v=self.version,
+            type=4,             # 4 for lsu
+            area=self.area,
+            len=len(OSPF()) + len(LSU()) + len(LSAHeader()) + len(ExternalLSA()),
+            router=self.rid,
+            data="".join(lsudata)
+        )
+
+        return str(ospf_packet)
+
+    def gen_lsu_externel_sub(self, seqid, linkid, mask, forwarding):
+        
+        lsaheader = LSAHeader(
+            age=1,
+            options=self.options,
+            type=5,
+            id=util.ip2int(linkid),
+            adv=self.rid,
+            seq=seqid,
+            sum=0,
+            len=len(LSAHeader()) + len(ExternalLSA())
+        )
+        
+        externalLSA = ExternalLSA(
+            mask=util.ip2int(mask),
+            metric=20,
+            forwarding=util.ip2int(forwarding),
+            tag=0
+        )
+
+        lsa_str = str(lsaheader) + str(externalLSA)
+
+        (lsa_str, checksum) = util.lsa_checksum(lsa_str)
+
+        return lsa_str
+
+
+    def gen_lsu_externel_multi(self, lsas):
+        
+        lsudata = []
+    
+        lsunum = LSU(
+            lsanum = len(lsas)
+        )
+
+        for item in lsas:
+            lsudata.append(self.gen_lsu_externel_sub(item["seqid"], item["linkid"], item["mask"], item["forwarding"]))
+
+        lsa_str = "".join(lsudata)
+
+        ospf_packet = OSPF(
+            v=self.version,
+            type=4,             # 4 for lsu
+            area=self.area,
+            len=len(OSPF()) + len(LSU()) + len(lsa_str),
+            router=self.rid,
+            data=str(lsunum) + lsa_str
+        )
+
+        return str(ospf_packet)
